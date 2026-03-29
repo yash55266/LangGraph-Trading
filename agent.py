@@ -1,6 +1,7 @@
 from typing import TypedDict, List, Dict
 from langgraph.graph import StateGraph, START, END
 from ml_model import get_ml_signal
+from ddgs import DDGS
 
 class TradingState(TypedDict):
     ticker: str
@@ -20,11 +21,29 @@ def quant_node(state: TradingState):
     }
 
 def researcher_node(state: TradingState):    
-    mock_news = [
-        "Reliance announces massive new green energy plant.",
-        "Oil prices drop, putting slight pressure on refinery margins."
-    ]
-    return {"recent_news": mock_news}
+    ticker = state['ticker']
+    company_name = ticker.split('.')[0]
+    search_query = f"{company_name} stock financial news India"
+    
+    recent_news = []
+    
+    try:
+        with DDGS() as ddgs:
+            results = ddgs.text(search_query, max_results=5, timelimit='w')
+            
+            for i, article in enumerate(results):
+                title = article.get('title', 'No Title')
+                snippet = article.get('body', 'No summary available.')
+                
+                formatted_news = f"{i+1}. {title}\nSummary: {snippet}\n"
+                recent_news.append(formatted_news)
+                
+    except Exception as e:
+        print(f"Search Error: {e}")
+        recent_news = ["Could not fetch recent news. Rely entirely on technical data."]
+
+    
+    return {"recent_news": recent_news}
 
 def cio_node(state: TradingState):    
     
