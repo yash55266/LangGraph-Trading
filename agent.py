@@ -2,6 +2,11 @@ from typing import TypedDict, List, Dict
 from langgraph.graph import StateGraph, START, END
 from ml_model import get_ml_signal
 from ddgs import DDGS
+from openai import OpenAI
+from pydantic import BaseModel
+from dotenv import load_dotenv
+
+load_dotenv()
 
 class TradingState(TypedDict):
     ticker: str
@@ -42,21 +47,41 @@ def researcher_node(state: TradingState):
         print(f"Search Error: {e}")
         recent_news = ["Could not fetch recent news. Rely entirely on technical data."]
 
-    
     return {"recent_news": recent_news}
 
-def cio_node(state: TradingState):    
+class CIODecision(BaseModel):
+    final_decision: str
+    reasoning: str
+
+def cio_node(state):
+    client = OpenAI()
     
-    signal = state.get("ml_signal")
-    confidence = state.get("ml_confidence")
-    news = state.get("recent_news")
-    
-    reasoning = f"The ML model suggests {signal} ({confidence}%). News is mostly positive. Approving trade."
-    
-    return {
-        "final_decision": "EXECUTE_BUY",
-        "reasoning": reasoning
-    }
+    news = "\n".join(state.get("recent_news", ["No news found."]))
+    user_prompt = f"""
+    Ticker: {state.get('ticker')}
+    ML Signal: {state.get('ml_signal')} (Confidence: {state.get('ml_confidence')}%)
+    News: {news}
+    """
+    try:
+        response = client.beta.chat.completions.parse(
+            model="gpt-4o",
+            temperature=0.1,
+            messages=[
+                {"role": "system", "content": "You are a quant fund CIO. Decide: 'EXECUTE_BUY', 'EXECUTE_SELL', or 'HOLD'. Severe news overrides the ML signal. Otherwise, trust the ML."},
+                {"role": "user", "content": user_prompt}
+            ],
+            response_format=CIODecision
+        )
+        
+        decision = response.choices[0].message.parsed
+        
+        return {
+            "final_decision": decision.final_decision,
+            "reasoning": decision.reasoning
+        }
+        
+    except Exception as e:
+        return {"final_decision": "HOLD", "reasoning": "System failure. Defaulting to HOLD."}
 
 workflow = StateGraph(TradingState)
 
