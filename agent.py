@@ -50,9 +50,6 @@ def researcher_node(state: TradingState):
 
     return {"recent_news": recent_news}
 
-from openai import OpenAI
-from pydantic import BaseModel
-
 class BullResponse(BaseModel):
     bull_reason: str
 
