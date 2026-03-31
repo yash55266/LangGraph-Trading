@@ -15,6 +15,7 @@ class TradingState(TypedDict):
     recent_news: List[str]           
     final_decision: str               
     reasoning: str
+    bull_reason: str
 
 
 def quant_node(state: TradingState):
@@ -48,6 +49,46 @@ def researcher_node(state: TradingState):
         recent_news = ["Could not fetch recent news. Rely entirely on technical data."]
 
     return {"recent_news": recent_news}
+
+from openai import OpenAI
+from pydantic import BaseModel
+
+class BullResponse(BaseModel):
+    bull_reason: str
+
+def bull_node(state):
+    ticker = state.get('ticker', 'Unknown')
+    
+    client = OpenAI()
+    news = "\n".join(state.get("recent_news", ["No news found."]))
+
+    user_prompt = f"""
+    Ticker: {ticker}
+    News: {news}
+    """
+    
+    try:
+        response = client.beta.chat.completions.parse(
+            model="gpt-4o",
+            temperature=0.5,
+            messages=[
+                {"role": "system", "content": "You are a highly optimistic Bullish Analyst. Your job is to read the news and ONLY provide the strongest possible arguments for why we should BUY this stock right now. Ignore negative news or spin it positively. Keep it to 2-3 compelling sentences."},
+                {"role": "user", "content": user_prompt}
+            ],
+            response_format=BullResponse
+        )
+        
+        reasoning = response.choices[0].message.parsed.bull_reason
+                
+        return {
+            "bull_reason": reasoning
+        }
+        
+    except Exception as e:
+        return {
+            "bull_reason": "Could not generate bullish due to a system error."
+        }
+
 
 class CIODecision(BaseModel):
     final_decision: str
@@ -88,9 +129,11 @@ workflow = StateGraph(TradingState)
 workflow.add_node("quant_model", quant_node)
 workflow.add_node("news_researcher", researcher_node)
 workflow.add_node("chief_investment_officer", cio_node)
+workflow.add_node("bullish_node",bull_node)
 
 workflow.add_edge(START, "quant_model")
 workflow.add_edge("quant_model", "news_researcher")
+workflow.add_edge("news_researcher","bullish_node")
 workflow.add_edge("news_researcher", "chief_investment_officer")
 workflow.add_edge("chief_investment_officer", END)
 
