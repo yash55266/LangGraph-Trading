@@ -47,3 +47,39 @@ X_test_df[volume_cols] = scaler_volume.transform(X_test_df[volume_cols])
 
 X_train = X_train_df.values
 X_test  = X_test_df.values
+
+
+class CustomDataset(Dataset):
+  def __init__(self,features,labels):
+    self.features=torch.tensor(features,dtype=torch.float32)
+    self.labels=torch.tensor(labels,dtype=torch.long)
+
+  def __len__(self):
+    return len(self.features)
+
+  def __getitem__(self,index):
+    return self.features[index], self.labels[index]
+
+train_dataset=CustomDataset(X_train,y_train)
+
+test_dataset=CustomDataset(X_test,y_test)
+
+train_loader=DataLoader(train_dataset,batch_size=40,shuffle=True)
+test_loader=DataLoader(test_dataset,batch_size=40,shuffle=False)
+
+class MyNN(nn.Module):
+  def __init__(self,num_features):
+    super().__init__()
+
+    self.model=nn.Sequential(
+        nn.Linear(num_features,32),
+        nn.ReLU(),
+        nn.Dropout(p=0.3),
+        nn.Linear(32,16),
+        nn.ReLU(),
+        nn.Dropout(p=0.3),
+        nn.Linear(16, 1)
+    )
+  def forward(self,x):
+    return self.model(x)
+
